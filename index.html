@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math & Music Visualizer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <canvas id="visualizer"></canvas>
+
+    <div class="controls">
+        <header>
+            <h1>Sonic Geometry</h1>
+            <p>Math x Buffer</p>
+        </header>
+
+        <div class="control-group">
+            <button id="toggle-audio" class="btn-primary">Start Audio</button>
+        </div>
+
+        <div class="control-group">
+            <label class="toggle-switch">
+                <input type="checkbox" id="toggle-theory">
+                <span class="label-text">Enable Theory Lab</span>
+            </label>
+        </div>
+
+        <div class="control-group">
+            <label for="viz-mode">Visualization</label>
+            <select id="viz-mode">
+                <option value="oscilloscope">Oscilloscope (Time)</option>
+                <option value="spectrum">Spectrum (Frequency)</option>
+                <option value="lissajous">Lissajous (Phase)</option>
+                <option value="interference">Interference (Wave Sum)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="osc-type">Waveform</label>
+            <select id="osc-type">
+                <option value="sine">Sine</option>
+                <option value="square">Square</option>
+                <option value="sawtooth">Sawtooth</option>
+                <option value="triangle">Triangle</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="freq-control">Frequency: <span id="freq-val">440</span> Hz</label>
+            <input type="range" id="freq-control" min="55" max="880" value="440" step="1">
+        </div>
+
+        <div class="control-group" id="detune-group" style="display: none;">
+            <label for="detune-control">L/R Detune: <span id="detune-val">0</span> cents</label>
+            <input type="range" id="detune-control" min="0" max="100" value="5" step="1">
+            <small>Needed for Lissajous figures</small>
+        </div>
+
+        <!-- Harmony Controls -->
+        <div class="control-group" id="harmony-group" style="display: none;">
+            <label>Interval Ratio</label>
+            <div class="radio-group">
+                <label><input type="radio" name="ratio" value="1" checked> Unison (1:1)</label>
+                <label><input type="radio" name="ratio" value="2"> Octave (2:1)</label>
+                <label><input type="radio" name="ratio" value="1.5"> Perfect 5th (3:2)</label>
+                <label><input type="radio" name="ratio" value="1.25"> Major 3rd (5:4)</label>
+                <label><input type="radio" name="ratio" value="1.0666"> Dissonant (16:15)</label>
+            </div>
+        </div>
+
+        <!-- Circle Controls -->
+        <div class="control-group" id="circle-group" style="display: none;">
+            <label>Circle of Fifths</label>
+            <div class="button-group">
+                <button id="btn-prev-fifth" class="btn-primary">← Prev</button>
+                <button id="btn-next-fifth" class="btn-primary">Next →</button>
+            </div>
+            <button id="btn-reset-circle" class="btn-secondary">Reset to C (Start)</button>
+            <div class="stats">
+                <p>Steps: <span id="circle-steps">0</span></p>
+                <p>Calculated Freq: <span id="circle-freq">100.00</span> Hz</p>
+                <p>Pythagorean Error: <span id="circle-error">0</span> cents</p>
+            </div>
+        </div>
+
+        <!-- Lessons Controls -->
+        <div class="control-group">
+            <label>Guided Lessons</label>
+            <button class="btn-secondary" onclick="lessonManager.startLesson(0)">1. Physics of Sound</button>
+            <button class="btn-secondary" onclick="lessonManager.startLesson(1)">2. Harmonics</button>
+        </div>
+
+        <!-- Educational Info Panel -->
+        <div id="edu-panel" class="edu-panel hidden">
+            <h3 id="edu-title">Concept Title</h3>
+            <p id="edu-desc">Description goes here.</p>
+            <p id="edu-math" class="math-note">Math: Ratio or Formula</p>
+        </div>
+    </div>
+
+    <div id="keyboard-container" class="keyboard">
+        <!-- Keys injected by JS -->
+    </div>
+
+    <script src="app.js?v=39"></script>
+</body>
+
+</html>
