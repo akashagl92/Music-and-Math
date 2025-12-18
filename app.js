@@ -3,6 +3,82 @@ const ctx = canvas.getContext('2d');
 let width, height;
 
 // --- AUDIO ENGINE CLASS ---
+// --- CHORD ANALYZER ---
+class ChordAnalyzer {
+    constructor() {
+        this.intervals = {
+            3: 'Minor Third',
+            4: 'Major Third',
+            5: 'Perfect Fourth',
+            7: 'Perfect Fifth',
+            12: 'Octave'
+        };
+        this.chords = {
+            '0-4-7': 'Major Triad',
+            '0-3-7': 'Minor Triad',
+            '0-4-7-11': 'Major 7th',
+            '0-3-7-10': 'Minor 7th',
+            '0-4-7-10': 'Dominant 7th',
+            '0-3-6': 'Diminished',
+            '0-4-8': 'Augmented'
+        };
+    }
+
+    identify(activeNotes) {
+        if (activeNotes.length < 2) return null;
+
+        // Sort frequencies low to high
+        const sorted = activeNotes.sort((a, b) => a.freq - b.freq);
+        const root = sorted[0];
+
+        // Calculate semitone intervals from root
+        const semitones = sorted.map(note => {
+            const ratio = note.freq / root.freq;
+            // f2 = f1 * 2^(st/12) => st = 12 * log2(ratio)
+            return Math.round(12 * Math.log2(ratio));
+        });
+
+        // Key String for Check (remove duplicates)
+        const uniqueSemitones = [...new Set(semitones)];
+        const key = uniqueSemitones.join('-');
+
+        // Match Chord
+        let chordName = this.chords[key];
+
+        // If 2 notes, check intervals
+        if (!chordName && uniqueSemitones.length === 2) {
+            const interval = uniqueSemitones[1]; // [0, 7] -> 7
+            chordName = this.intervals[interval] || 'Interval';
+        }
+
+        // Calculate Ratios for Math foundation
+        const ratios = sorted.map(note => {
+            const r = note.freq / root.freq;
+            return r.toFixed(2);
+        });
+
+        // Determine Stability (Consonance)
+        // Simple heuristic: Perfect 5th (3:2) and Maj 3rd (5:4) are consonant. 
+        // Tritone (6 semitones) is dissonant.
+        // Seconds (1, 2) and Sevenths (10, 11) are dissonant.
+        let stability = 'Consonant';
+        if (uniqueSemitones.some(s => [1, 2, 6, 10, 11].includes(s % 12))) {
+            stability = 'Dissonant';
+        }
+
+        return {
+            root: root.note,
+            chordName: chordName || 'Unknown',
+            semitones: uniqueSemitones,
+            ratios: ratios,
+            stability: stability
+        };
+    }
+}
+
+const analyzer = new ChordAnalyzer();
+const analysisPanel = document.getElementById('analysis-panel'); // We need to add this to HTML
+
 // --- AUDIO ENGINE CLASS ---
 class AudioEngine {
     constructor() {
@@ -12,8 +88,28 @@ class AudioEngine {
         this.analyserL = null; // Left Channel
         this.analyserR = null; // Right Channel
         this.voices = {};
-        this.droneVoice = null;
+        this.droneVoice = null; // Separate drone
         this.polyphonyLimit = 16;
+    }
+
+    getActiveNotes() {
+        const notes = [];
+
+        // 1. Drone
+        if (this.droneVoice && this.droneVoice.osc) {
+            notes.push({ freq: this.droneVoice.osc.frequency.value, note: 'Drone' });
+        }
+
+        // 2. Transients (Keys + MIDI)
+        // Every voice in `this.voices` is now included
+        Object.keys(this.voices).forEach(key => {
+            const v = this.voices[key];
+            const f = v.osc.frequency.value;
+            // Provide a note label for the analyzer if we have it
+            notes.push({ freq: f, note: key.includes('_') ? key.split('_')[0] : 'Note' });
+        });
+
+        return notes;
     }
 
     init() {
@@ -193,24 +289,78 @@ class AudioEngine {
 
 const engine = new AudioEngine();
 
-// --- VIRTUAL KEYBOARD STATE ---
-const pianoKeys = [
-    { note: 'C3', freq: 130.81, key: 'a', color: 'white' },
-    { note: 'C#3', freq: 138.59, key: 'w', color: 'black' },
-    { note: 'D3', freq: 146.83, key: 's', color: 'white' },
-    { note: 'D#3', freq: 155.56, key: 'e', color: 'black' },
-    { note: 'E3', freq: 164.81, key: 'd', color: 'white' },
-    { note: 'F3', freq: 174.61, key: 'f', color: 'white' },
-    { note: 'F#3', freq: 185.00, key: 't', color: 'black' },
-    { note: 'G3', freq: 196.00, key: 'g', color: 'white' },
-    { note: 'G#3', freq: 207.65, key: 'y', color: 'black' },
-    { note: 'A3', freq: 220.00, key: 'h', color: 'white' },
-    { note: 'A#3', freq: 233.08, key: 'u', color: 'black' },
-    { note: 'B3', freq: 246.94, key: 'j', color: 'white' },
-    { note: 'C4', freq: 261.63, key: 'k', color: 'white' },
-    { note: 'C#4', freq: 277.18, key: 'o', color: 'black' },
-    { note: 'D4', freq: 293.66, key: 'l', color: 'white' }
-];
+// --- SMART KEYBOARD GENERATOR ---
+function generateKeyboard(startOctave, endOctave) {
+    const keys = [];
+    // Use Common/Jazz convention (Flats for 3, 6, 7 degrees typically, but here purely generic mixed)
+    // Matches Ear Trainer: C# (Db), Eb (D#), F# (Gb), Ab (G#), Bb (A#)
+    const notes = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+    // MIDI Note 69 = A4 = 440Hz
+    // C4 = 60
+    const startMidi = (startOctave + 1) * 12;
+    const endMidi = (endOctave + 1) * 12;
+
+    for (let m = startMidi; m <= endMidi; m++) {
+        const noteIndex = m % 12;
+        const octave = Math.floor(m / 12) - 1;
+        const noteName = notes[noteIndex];
+
+        // Frequency Formula
+        const freq = 440 * Math.pow(2, (m - 69) / 12);
+
+        // Color (Black if not in C Major scale natural notes)
+        const isBlack = !['C', 'D', 'E', 'F', 'G', 'A', 'B'].includes(noteName);
+
+        // Keyboard mapping
+        let keyChar = '';
+
+        // Octave 3 (C3-B3) - Home Row (Standard)
+        if (octave === 3) {
+            const map = {
+                'C': 'a', 'C#': 'w', 'D': 's', 'Eb': 'e', 'E': 'd',
+                'F': 'f', 'F#': 't', 'G': 'g', 'Ab': 'y', 'A': 'h',
+                'Bb': 'u', 'B': 'j'
+            };
+            keyChar = map[noteName] || '';
+        }
+
+        // Octave 4 (C4-B4) - Upper Home Row & Top Row parts
+        // Continuing from J: K, O, L, P, ;, '
+        if (octave === 4) {
+            const map = {
+                'C': 'k', 'C#': 'o', 'D': 'l', 'Eb': 'p', 'E': ';',
+                'F': '\'', 'F#': ']', 'G': '7', 'Ab': '8', 'A': '9',
+                'Bb': '0', 'B': '-'
+            };
+            keyChar = map[noteName] || '';
+        }
+
+        // Octave 2 (C2-B2) - Bottom Row (White keys only for now to avoid conflict)
+        if (octave === 2) {
+            // Z X C V B N M , . /
+            if (noteName === 'C') keyChar = 'z';
+            if (noteName === 'D') keyChar = 'x';
+            if (noteName === 'E') keyChar = 'c';
+            if (noteName === 'F') keyChar = 'v';
+            if (noteName === 'G') keyChar = 'b';
+            if (noteName === 'A') keyChar = 'n';
+            if (noteName === 'B') keyChar = 'm';
+        }
+
+        keys.push({
+            note: `${noteName}${octave}`,
+            freq: freq,
+            key: keyChar,
+            color: isBlack ? 'black' : 'white',
+            midi: m
+        });
+    }
+    return keys;
+}
+
+// Generate C3 to C5 (2 Octaves) - Matches standard 25-key controller
+const pianoKeys = generateKeyboard(3, 5);
 
 // --- UI & GLOBALS ---
 let currentMode = 'oscilloscope';
@@ -257,9 +407,11 @@ btnToggle.addEventListener('click', () => {
         engine.stopTone();
         engine.stopTheoryTones();
         btnToggle.textContent = 'Start Audio';
+        btnToggle.classList.remove('active');
         isAudioActive = false;
     } else {
         btnToggle.textContent = 'Stop Audio';
+        btnToggle.classList.add('active');
         isAudioActive = true;
         updateAudioState();
         console.log('[UI] State updated. Active:', isAudioActive);
@@ -487,6 +639,7 @@ setTimeout(() => lessonManager.init(), 600);
 
 // --- KEYBOARD LOGIC (Fix) ---
 // --- KEYBOARD LOGIC (Fix) ---
+// --- KEYBOARD LOGIC (Refactored) ---
 function initKeyboard() {
     console.log('[Init] Initializing Virtual Keyboard...');
     const kbContainer = document.getElementById('keyboard-container');
@@ -495,6 +648,7 @@ function initKeyboard() {
         return;
     }
 
+    // Clear previous keys
     kbContainer.innerHTML = '';
 
     pianoKeys.forEach(k => {
@@ -504,35 +658,33 @@ function initKeyboard() {
 
         // Label
         const label = document.createElement('span');
-        label.innerText = k.note + `\n(${k.key.toUpperCase()})`;
+        const keyCharDisplay = k.key ? `\n(${k.key.toUpperCase()})` : '';
+        label.innerText = k.note + keyCharDisplay;
         keyEl.appendChild(label);
 
-        // Helpers
+        // Individual Key Logic (Mouse/Touch)
         const startKey = () => {
+            // Resume Audio if suspended (redundant but safe)
+            if (engine.ctx && engine.ctx.state === 'suspended') engine.ctx.resume();
+
             if (theoryEnabled) {
                 const detuneMultiplier = Math.pow(2, detuneCents / 1200);
-                // Use UNIQUE ID per key so we don't steal voices from other keys
                 engine.playNote(k.freq, oscType, -0.5, `${k.note}_base`);
                 engine.playNote(k.freq * harmonyRatio * detuneMultiplier, oscType, 0.5, `${k.note}_harm`);
             } else {
-                engine.playNote(k.freq, oscType, 0, `${k.note}_base`); // Standard
+                engine.playNote(k.freq, oscType, 0, `${k.note}_base`);
             }
             keyEl.classList.add('active');
         };
         const stopKey = () => {
             engine.stopNote(`${k.note}_base`);
-            if (theoryEnabled) {
-                engine.stopNote(`${k.note}_harm`);
-            }
+            if (theoryEnabled) engine.stopNote(`${k.note}_harm`);
             keyEl.classList.remove('active');
         };
 
-        // Mouse Events
-        keyEl.addEventListener('mousedown', (e) => { e.preventDefault(); startKey(); }); // Prevent drag selection
+        keyEl.addEventListener('mousedown', (e) => { e.preventDefault(); startKey(); });
         keyEl.addEventListener('mouseup', stopKey);
         keyEl.addEventListener('mouseleave', stopKey);
-
-        // Touch Events for mobile support
         keyEl.addEventListener('touchstart', (e) => { e.preventDefault(); startKey(); });
         keyEl.addEventListener('touchend', (e) => { e.preventDefault(); stopKey(); });
 
@@ -540,37 +692,45 @@ function initKeyboard() {
     });
 
     console.log('[Init] Keyboard keys rendered.');
-
-    // Keyboard Bindings (Global)
-    window.addEventListener('keydown', (e) => {
-        if (e.repeat) return;
-        const map = pianoKeys.find(k => k.key === e.key.toLowerCase());
-        if (map) {
-            if (theoryEnabled) {
-                const detuneMultiplier = Math.pow(2, detuneCents / 1200);
-                engine.playNote(map.freq, oscType, -0.5, `${map.note}_base`);
-                engine.playNote(map.freq * harmonyRatio * detuneMultiplier, oscType, 0.5, `${map.note}_harm`);
-            } else {
-                engine.playNote(map.freq, oscType, 0, `${map.note}_base`);
-            }
-            const el = document.querySelector(`.key[data-note="${map.note}"]`);
-            if (el) el.classList.add('active');
-        }
-    });
-
-    window.addEventListener('keyup', (e) => {
-        const map = pianoKeys.find(k => k.key === e.key.toLowerCase());
-        if (map) {
-            engine.stopNote(`${map.note}_base`);
-            // Always try to stop harmony just in case mode switched, or check if theoryEnabled
-            // Safer to just stop if it exists
-            engine.stopNote(`${map.note}_harm`);
-
-            const el = document.querySelector(`.key[data-note="${map.note}"]`);
-            if (el) el.classList.remove('active');
-        }
-    });
 }
+
+// BIND GLOBAL KEYS (Run Once)
+// We rely on 'keydown' / 'keyup' only being bound HERE to avoid duplicates if initKeyboard runs again.
+document.addEventListener('keydown', (e) => {
+    // console.log('[Keyboard] KeyDown:', e.key); // Debug log
+    if (e.repeat) return;
+
+    // Prevent scrolling if playing piano keys
+    const preventKeys = ['a', 'w', 's', 'e', 'd', 'k', 'o', 'l', 'p', ';', '\''];
+    if (preventKeys.includes(e.key.toLowerCase())) {
+        // e.preventDefault(); // Optional: might block user typing in inputs if we add any
+    }
+
+    const map = pianoKeys.find(k => k.key === e.key.toLowerCase());
+    if (map) {
+        if (engine && engine.ctx && engine.ctx.state === 'suspended') engine.ctx.resume();
+
+        if (theoryEnabled) {
+            const detuneMultiplier = Math.pow(2, detuneCents / 1200);
+            engine.playNote(map.freq, oscType, -0.5, `${map.note}_base`);
+            engine.playNote(map.freq * harmonyRatio * detuneMultiplier, oscType, 0.5, `${map.note}_harm`);
+        } else {
+            engine.playNote(map.freq, oscType, 0, `${map.note}_base`);
+        }
+        const el = document.querySelector(`.key[data-note="${map.note}"]`);
+        if (el) el.classList.add('active');
+    }
+});
+
+document.addEventListener('keyup', (e) => {
+    const map = pianoKeys.find(k => k.key === e.key.toLowerCase());
+    if (map) {
+        engine.stopNote(`${map.note}_base`);
+        engine.stopNote(`${map.note}_harm`);
+        const el = document.querySelector(`.key[data-note="${map.note}"]`);
+        if (el) el.classList.remove('active');
+    }
+});
 
 // --- CIRCLE OF FIFTHS LOGIC (Restored) ---
 // --- CIRCLE OF FIFTHS LOGIC (Restored) ---
@@ -677,12 +837,67 @@ function drawCircleOfFifths() {
 
 
 // --- VISUALIZATION LOOP ---
-function draw() {
-    requestAnimationFrame(draw);
+let isVisualizerFrozen = false;
+let animationFrameId = null;
+
+function freezeVisualizer() {
+    isVisualizerFrozen = true;
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+}
+
+function resumeVisualizer() {
+    if (!isVisualizerFrozen) return; // Already running, don't start duplicate loop
+    isVisualizerFrozen = false;
+    draw();
+}
+
+let lastAnalysisTime = 0;
+
+function draw(timestamp) {
+    if (!isVisualizerFrozen) {
+        animationFrameId = requestAnimationFrame(draw);
+    }
+
+    // --- HARMONY ANALYSIS (Throttled to ~10fps) ---
+    if (timestamp - lastAnalysisTime > 100) {
+        lastAnalysisTime = timestamp;
+
+        const activeNotes = engine.getActiveNotes();
+        const result = analyzer.identify(activeNotes);
+
+        const panel = document.getElementById('analysis-panel');
+        const nameEl = document.getElementById('chord-name');
+        const ratioEl = document.getElementById('chord-ratios');
+        const stabEl = document.getElementById('chord-stability');
+
+        if (panel && nameEl && ratioEl && stabEl) {
+            if (result && activeNotes.length >= 2) {
+                panel.style.display = 'block';
+                nameEl.textContent = result.chordName;
+                const ratioStr = result.ratios.join(' : ');
+                ratioEl.textContent = ratioStr;
+                stabEl.textContent = result.stability;
+                stabEl.className = result.stability === 'Consonant' ? 'tag-consonant' : 'tag-dissonant';
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+    }
+
+    // Always clear/fill background
     ctx.fillStyle = 'rgba(5, 5, 5, 0.2)';
     ctx.fillRect(0, 0, width, height);
 
-    if (!engine.ctx) return;
+    // Safety: If engine not ready, show STATUS TEXT
+    if (!engine || !engine.ctx || !engine.masterAnalyser) {
+        ctx.fillStyle = 'white';
+        ctx.font = '20px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText("Click 'START AUDIO' to begin", width / 2, height / 2);
+        return;
+    }
+
+    // Debug Logging Removed (Clean V53)
 
     if (currentMode === 'oscilloscope') drawOscilloscope();
     if (currentMode === 'spectrum') drawSpectrum();
@@ -807,6 +1022,332 @@ function drawTheory() {
     ctx.fillText(`Ratio 1:${harmonyRatio} | Interference Pattern`, width / 2, height - 80);
 }
 
+// --- EAR TRAINER COACH ---
+class EarTrainer {
+    constructor() {
+        this.currentLevel = 0;
+        this.score = 0;
+        this.currentQuestion = null;
+        this.isRevealing = false;
+
+        // UI Refs
+        this.overlay = document.getElementById('ear-trainer');
+        this.levelMenu = document.getElementById('ear-levels');
+        this.gameArea = document.getElementById('ear-game');
+        this.optionsGrid = document.getElementById('ear-options');
+        this.feedback = document.getElementById('ear-feedback');
+        this.scoreEl = document.getElementById('ear-score');
+        this.levelTitle = document.getElementById('level-title');
+    }
+
+    init() {
+        if (!this.overlay) return;
+        // Bind UI
+        const btnGym = document.getElementById('btn-ear-gym');
+        if (btnGym) btnGym.addEventListener('click', () => this.open());
+
+        const close = document.getElementById('close-ear');
+        if (close) close.addEventListener('click', () => this.close());
+
+        const btnListen = document.getElementById('btn-listen');
+        if (btnListen) btnListen.addEventListener('click', () => this.playQuestion());
+
+        const btnNext = document.getElementById('btn-next-question');
+        if (btnNext) btnNext.addEventListener('click', () => this.nextQuestion());
+    }
+
+    open() {
+        this.overlay.classList.remove('hidden');
+        this.showMenu();
+    }
+
+    close() {
+        this.overlay.classList.add('hidden');
+        this.isRevealing = false;
+        if (engine) {
+            engine.stopNote('ear_1');
+            engine.stopNote('ear_2');
+        }
+        resumeVisualizer(); // FIX: Ensure animation restarts when gym closes
+    }
+
+    showMenu() {
+        this.levelMenu.classList.remove('hidden');
+        this.gameArea.classList.add('hidden');
+    }
+
+    startLevel(level) {
+        this.currentLevel = level;
+        this.score = 0;
+        this.scoreEl.textContent = `Score: 0`;
+        this.levelMenu.classList.add('hidden');
+        this.gameArea.classList.remove('hidden');
+
+        const titles = { 1: 'Stability', 2: 'Intervals', 3: 'Perfect Pitch' };
+        this.levelTitle.textContent = `Level ${level}: ${titles[level]}`;
+
+        this.nextQuestion();
+    }
+
+    getNoteName(midi) {
+        const notes = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+        const octave = Math.floor(midi / 12) - 1;
+        const note = notes[midi % 12];
+        return `${note}${octave}`;
+    }
+
+    nextQuestion() {
+        this.isRevealing = false;
+        resumeVisualizer();
+        this.overlay.style.backdropFilter = 'blur(25px)'; // Restore blur
+        this.overlay.style.webkitBackdropFilter = 'blur(25px)';
+
+        this.overlay.style.background = 'rgba(0, 0, 0, 0.95)'; // Deep dark
+        this.feedback.classList.add('hidden');
+
+        // Restore Modal Size
+        const box = this.overlay.querySelector('.ear-box');
+        if (box) box.classList.remove('minimized');
+
+        // Hide CTA
+        const cta = document.getElementById('ear-cta');
+        if (cta) cta.classList.add('hidden');
+
+        // Generate Question
+        const rootMidi = 48 + Math.floor(Math.random() * 12); // C3 to B3
+        const rootFreq = 440 * Math.pow(2, (rootMidi - 69) / 12);
+
+        let interval = 0;
+        let note2Freq = null;
+        let correctAnswer, options, explanation;
+        let playedNotesText = "";
+
+        // --- LEVEL 1: STABILITY ---
+        if (this.currentLevel === 1) {
+            const isStable = Math.random() > 0.5;
+            const stableIntervals = [7, 4, 12, 0, 5]; // 5th, 3rd, Oct, Unison, 4th
+            const tenseIntervals = [1, 2, 6, 11];     // m2, M2, Triton, M7
+
+            // Pick random interval from selected pool
+            interval = isStable
+                ? stableIntervals[Math.floor(Math.random() * stableIntervals.length)]
+                : tenseIntervals[Math.floor(Math.random() * tenseIntervals.length)];
+
+            correctAnswer = isStable ? 'Consonant (Stable)' : 'Dissonant (Tense)';
+            options = ['Consonant (Stable)', 'Dissonant (Tense)'];
+            explanation = isStable
+                ? "Stable intervals blend smoothly. Notice how the waves seem to lock together without 'beating'."
+                : "Dissonant intervals clash. You can hear a 'wobble' or beating sound due to the complex frequency ratio.";
+
+            const n1 = this.getNoteName(rootMidi);
+            const n2 = this.getNoteName(rootMidi + interval);
+            playedNotesText = `${n1} and ${n2}`;
+        }
+        // --- LEVEL 2: INTERVALS ---
+        else if (this.currentLevel === 2) {
+            // Define pool of intervals with Etymology/Theory
+            const intervalPool = [
+                {
+                    semitones: 4,
+                    name: "Major Third",
+                    hint: "Ratio 5:4. Why? The higher note vibrates 5 times for every 4 times the lower note vibrates. This '5-limit' harmony feels sweet and bright."
+                },
+                {
+                    semitones: 7,
+                    name: "Perfect Fifth",
+                    hint: "Ratio 3:2. Why? It's the simplest ratio after the octave. The waves lock together every 2 cycles of the low note. This physics makes it universally stable."
+                },
+                {
+                    semitones: 12,
+                    name: "Octave",
+                    hint: "Ratio 2:1. Why? Doubling the frequency creates a wave that aligns perfectly every 1 cycle. To our brain, it registers as the 'same' note, just higher."
+                },
+                {
+                    semitones: 5,
+                    name: "Perfect Fourth",
+                    hint: "Ratio 4:3. Why? It reverses the Fifth (3:4 inverted). It is mathematically simple but in harmony it creates a slight tension that wants to resolve."
+                },
+                {
+                    semitones: 3,
+                    name: "Minor Third",
+                    hint: "Ratio 6:5. Why? It aligns every 6 vibrations (vs 5 for Major). This slightly more complex ratio creates the darker, 'sadder' quality of minor chords."
+                }
+            ];
+
+            // Pick Target
+            const target = intervalPool[Math.floor(Math.random() * intervalPool.length)];
+            interval = target.semitones;
+            correctAnswer = target.name;
+            explanation = target.hint;
+
+            // Generate Options (Correct + Random Distractors)
+            // Shuffle pool and pick 4
+            const shuffled = intervalPool.sort(() => 0.5 - Math.random());
+            // Ensure correct answer is in options
+            let opts = shuffled.slice(0, 3).map(i => i.name);
+            if (!opts.includes(correctAnswer)) opts[0] = correctAnswer;
+            opts = opts.sort(); // Consistent order or randomize? Randomize.
+            options = opts.sort(() => 0.5 - Math.random());
+
+            const n1 = this.getNoteName(rootMidi);
+            const n2 = this.getNoteName(rootMidi + interval);
+            playedNotesText = `${n1} and ${n2}`;
+        }
+        // --- LEVEL 3: PERFECT PITCH ---
+        else {
+            // Single Note Identification
+            const notes = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+            const startNoteIndex = rootMidi % 12; // 0-11
+            const noteName = notes[startNoteIndex]; // e.g. "C"
+
+            // Educational Hints for Note Characteristics (Subjective associations)
+            const noteHints = {
+                'C': "The grounded center. Often feels stable, plain, or 'white'.",
+                'C#': "Sharp and piercing. Often associated with brightness or tension.",
+                'D': "Warm and resonant. A common key for folk music and violins.",
+                'Eb': "Heroic and bold. Often used in brass fanfares (Beethoven's Eroica).",
+                'E': "Bright and brilliant. A very common key for guitar music.",
+                'F': "Pastoral and calm. Often associated with nature or green fields.",
+                'F#': "The Triton! Dividing the octave in half. Tense and electric.",
+                'G': "The Dominant. Powerful, solid, and bright.",
+                'Ab': "Warm, dark, and velvety. Often used for romance or tragedy.",
+                'A': "The Standard (440Hz). Bright and optimistic.",
+                'Bb': "The 'Blues' key. Soulful, rich, and commonly used in jazz.",
+                'B': "Sharp, piercing, and leading. It wants to resolve up to C."
+            };
+
+            interval = 0;
+            correctAnswer = noteName;
+            explanation = `This is a ${noteName}. ${noteHints[noteName] || "Listen to its unique color."}`;
+            playedNotesText = `${noteName} (${this.getNoteName(rootMidi)})`;
+
+            // Options: random note names
+            const allOptions = ['C', 'D', 'E', 'F', 'G', 'A', 'B', 'F#', 'Bb'];
+            // Ensure correct is there
+            let opts = [correctAnswer];
+            while (opts.length < 4) {
+                const r = allOptions[Math.floor(Math.random() * allOptions.length)];
+                if (!opts.includes(r)) opts.push(r);
+            }
+            options = opts.sort();
+        }
+
+        note2Freq = rootFreq * Math.pow(2, interval / 12);
+        this.currentQuestion = { rootFreq, note2Freq, correctAnswer, options, level: this.currentLevel, explanation, playedNotesText };
+        this.renderOptions(options);
+        this.playQuestion();
+    }
+
+    renderOptions(options) {
+        this.optionsGrid.innerHTML = '';
+        options.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'btn-secondary';
+            btn.textContent = opt;
+            btn.onclick = () => this.checkAnswer(opt, btn);
+            this.optionsGrid.appendChild(btn);
+        });
+    }
+
+    playQuestion() {
+        if (!this.currentQuestion) return;
+        const { rootFreq, note2Freq, level } = this.currentQuestion;
+        engine.init();
+
+        // Stop previous
+        engine.stopNote('ear_1');
+        engine.stopNote('ear_2');
+
+        // Level 3: Perfect Pitch -> Single Note
+        if (level === 3) {
+            engine.playNote(rootFreq, 'sine', 0.5, 'ear_1');
+        } else {
+            // Levels 1 & 2: Intervals -> Two Notes
+            engine.playNote(rootFreq, 'sine', -0.5, 'ear_1');
+            engine.playNote(note2Freq, 'sine', 0.5, 'ear_2');
+        }
+    }
+
+    checkAnswer(guess, btn) {
+        if (this.isRevealing) return;
+        if (guess === this.currentQuestion.correctAnswer) {
+            this.score += 10;
+            this.scoreEl.textContent = `Score: ${this.score}`;
+            btn.style.background = '#4cd137';
+            this.feedback.querySelector('h3').textContent = "Correct!";
+            this.feedback.querySelector('p').textContent = `That was a ${this.currentQuestion.correctAnswer}.`;
+            // Set explanation
+            const expEl = document.getElementById('ear-explanation');
+            if (expEl && this.currentQuestion.explanation) {
+                expEl.textContent = this.currentQuestion.explanation;
+            }
+            // Set details
+            const notesEl = document.getElementById('ear-notes');
+            if (notesEl && this.currentQuestion.playedNotesText) {
+                notesEl.textContent = `Notes: ${this.currentQuestion.playedNotesText}`;
+            }
+            this.reveal();
+        } else {
+            btn.style.background = '#e84118';
+        }
+    }
+
+    reveal() {
+        this.isRevealing = true;
+        this.feedback.classList.remove('hidden');
+        // Fade out overlay background
+        this.overlay.style.background = 'rgba(0, 0, 0, 0.1)';
+
+        // Minimize Modal to show visualization
+        const box = this.overlay.querySelector('.ear-box');
+        if (box) box.classList.add('minimized');
+
+        // EDUCATIONAL MOMENT: Force Visualization Mode
+        // If we are talking about Ratios (Level 2), show the Interference Pattern!
+        if (this.currentLevel === 2) {
+            if (currentMode !== 'interference') {
+                currentMode = 'interference';
+                // Update Dropdown UI if it exists
+                const modeSelect = document.getElementById('mode-selector');
+                if (modeSelect) modeSelect.value = 'interference';
+            }
+            // Add CTA if not present
+            let cta = document.getElementById('ear-cta');
+            if (!cta) {
+                cta = document.createElement('div');
+                cta.id = 'ear-cta';
+                cta.style.position = 'absolute';
+                cta.style.top = '15%';
+                cta.style.width = '100%';
+                cta.style.textAlign = 'center';
+                cta.style.color = '#00ff88';
+                cta.style.fontSize = '1.2rem';
+                cta.style.fontWeight = 'bold';
+                cta.style.textShadow = '0 2px 4px rgba(0,0,0,0.8)';
+                cta.style.pointerEvents = 'none';
+                cta.innerHTML = "👁️ Look at the interference pattern in the background!<br><span style='font-size:0.9rem; color: #fff; opacity: 0.8'>The waves lock together based on the ratio.</span>";
+                this.overlay.appendChild(cta);
+            }
+            cta.classList.remove('hidden');
+        }
+
+        this.playQuestion();
+
+        // FREEZE FRAME SNAPSHOT
+        // Remove Blur for clarity
+        this.overlay.style.backdropFilter = 'none';
+        this.overlay.style.webkitBackdropFilter = 'none';
+
+        // Wait 500ms for wave to stabilize, then freeze
+        setTimeout(() => {
+            if (this.isRevealing) freezeVisualizer();
+        }, 500);
+    }
+}
+
+const earTrainer = new EarTrainer();
+
+
 // --- EDUCATION / TOOLTIP SYSTEM ---
 const eduData = {
     // Waveforms
@@ -915,23 +1456,169 @@ allRadios.forEach(r => {
     });
 });
 
-draw();
+// --- MIDI HANDLER ---
+class MIDIHandler {
+    constructor() {
+        this.midiAccess = null;
+        this.isConnected = false;
+        this.statusEl = document.getElementById('midi-status');
+    }
+
+    init() {
+        if (navigator.requestMIDIAccess) {
+            navigator.requestMIDIAccess().then(
+                (access) => this.onSuccess(access),
+                () => console.warn('MIDI Access Failed')
+            );
+        }
+    }
+
+    onSuccess(midiAccess) {
+        this.midiAccess = midiAccess;
+        console.log('[MIDI] Access Granted');
+
+        // Listen for new/removed devices
+        midiAccess.onstatechange = (e) => {
+            console.log(`[MIDI] State Change: ${e.port.name} is ${e.port.state}`);
+            this.updateStatus(e);
+        };
+
+        // Bind existing devices
+        this.bindAllInputs();
+
+        // Initial check for connected devices
+        if (midiAccess.inputs.size > 0) {
+            this.setConnected(true);
+        }
+    }
+
+    bindAllInputs() {
+        if (!this.midiAccess) return;
+        for (let input of this.midiAccess.inputs.values()) {
+            input.onmidimessage = (msg) => this.handleMessage(msg);
+        }
+    }
+
+    updateStatus(e) {
+        // Check if any inputs are active
+        const hasInputs = Array.from(this.midiAccess.inputs.values()).some(i => i.state === 'connected');
+        this.setConnected(hasInputs);
+        if (hasInputs) this.bindAllInputs();
+    }
+
+    setConnected(connected) {
+        this.isConnected = connected;
+        if (this.statusEl) {
+            if (connected) {
+                this.statusEl.classList.remove('hidden');
+                this.statusEl.style.display = 'block'; // Ensure visibility
+                this.statusEl.style.color = '#00ff88';
+                this.statusEl.style.opacity = '1';
+                this.statusEl.textContent = '🎹 MIDI Ready';
+            } else {
+                this.statusEl.classList.add('hidden');
+                this.statusEl.style.display = 'none';
+            }
+        }
+    }
+
+    handleMessage(msg) {
+        const command = msg.data[0] & 0xF0;
+        const note = msg.data[1];
+        const velocity = msg.data[2];
+        const volume = velocity / 127;
+
+        if (command === 144 && velocity > 0) {
+            this.playMidiNote(note, volume);
+            this.flashStatus();
+        } else if (command === 128 || (command === 144 && velocity === 0)) {
+            this.stopMidiNote(note);
+        }
+    }
+
+    flashStatus() {
+        if (this.statusEl) {
+            this.statusEl.style.textShadow = "0 0 15px #00ff88";
+            this.statusEl.style.transform = "scale(1.1)";
+            setTimeout(() => {
+                this.statusEl.style.textShadow = "none";
+                this.statusEl.style.transform = "scale(1)";
+            }, 100);
+        }
+    }
+
+    playMidiNote(note, volume) {
+        const freq = 440 * Math.pow(2, (note - 69) / 12);
+        const noteName = this.getNoteName(note);
+
+        if (engine && engine.ctx && engine.ctx.state === 'suspended') {
+            engine.ctx.resume();
+        }
+
+        if (engine) engine.playNote(freq, oscType, (volume - 0.5) * 0.4, `${noteName}_midi`);
+        this.highlightKey(noteName, true);
+    }
+
+    stopMidiNote(note) {
+        const noteName = this.getNoteName(note);
+        if (engine) engine.stopNote(`${noteName}_midi`);
+        this.highlightKey(noteName, false);
+    }
+
+    getNoteName(midiNote) {
+        // MUST match pianoKeys naming (mixed sharps/flats)
+        const notes = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+        const octave = Math.floor(midiNote / 12) - 1;
+        const note = notes[midiNote % 12];
+        return `${note}${octave}`;
+    }
+
+    highlightKey(noteName, isActive) {
+        // Search virtual keys
+        const el = document.querySelector(`.key[data-note="${noteName}"]`);
+        if (el) {
+            if (isActive) el.classList.add('active');
+            else el.classList.remove('active');
+        }
+    }
+}
+
+const midiHandler = new MIDIHandler();
+
+let isAppStarted = false;
+function startApp() {
+    if (isAppStarted) return;
+    isAppStarted = true;
+    console.log('[Init] Starting App...');
+    initKeyboard();
+    requestAnimationFrame(draw); // Use rAF to start properly with timestamp
+    if (lessonManager && !lessonManager.overlay) lessonManager.init();
+    if (earTrainer) earTrainer.init();
+    if (midiHandler) midiHandler.init();
+}
 
 // Fallback if already loaded
 if (document.readyState === 'complete') {
-    initKeyboard();
+    startApp();
 } else {
-    window.addEventListener('load', () => {
-        console.log('[Init] Window Loaded');
-        initKeyboard();
-        if (lessonManager && !lessonManager.overlay) lessonManager.init();
-    });
+    window.addEventListener('load', startApp);
 }
 
 // Direct Attempt (in case load already fired or is weird)
 setTimeout(() => {
-    if (document.getElementById('keyboard-container').children.length === 0) {
+    const container = document.getElementById('keyboard-container');
+    if (container && container.children.length === 0) {
         console.log('[Init] Force Init');
         initKeyboard();
     }
 }, 500);
+
+// GLOBAL AUDIO RESUME UNLOCK
+document.addEventListener('click', () => {
+    if (engine && engine.ctx && engine.ctx.state === 'suspended') {
+        engine.ctx.resume().then(() => {
+            console.log('[Audio] Context Resumed by User Interaction');
+            engine.isAudioActive = true;
+        });
+    }
+}, { once: false }); // Check on every click just in case

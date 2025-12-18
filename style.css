@@ -201,6 +201,26 @@ small {
     font-style: italic;
 }
 
+.analysis-badge {
+    position: fixed;
+    bottom: 120px;
+    /* Above keyboard */
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 12px 20px;
+    border-radius: 12px;
+    text-align: center;
+    color: white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    min-width: 250px;
+    pointer-events: none;
+    /* Let clicks pass through if needed */
+}
+
 /* --- Virtual Keyboard --- */
 .keyboard {
     position: fixed;
@@ -208,7 +228,8 @@ small {
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
+    /* Ensure start alignment for scrolling */
     background: rgba(255, 255, 255, 0.1);
     padding: 10px;
     border-radius: 12px;
@@ -216,7 +237,30 @@ small {
     z-index: 1000;
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
     border: 2px solid rgba(255, 255, 255, 0.1);
-    /* Debug visibility */
+
+    /* Scrollable */
+    max-width: 95vw;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+
+    /* Scrollbar styling */
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-color) rgba(0, 0, 0, 0.3);
+}
+
+.keyboard::-webkit-scrollbar {
+    height: 6px;
+}
+
+.keyboard::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 3px;
+}
+
+.keyboard::-webkit-scrollbar-thumb {
+    background-color: var(--primary-color);
+    border-radius: 3px;
 }
 
 .key {
@@ -337,6 +381,176 @@ small {
     opacity: 0.9;
 }
 
+/* --- Ear Training Gym --- */
+.ear-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.95);
+    /* Deep black mainly */
+    backdrop-filter: blur(25px);
+    /* Maximimum Blur */
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    /* Default hidden */
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ear-overlay:not(.hidden) {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.ear-box {
+    background: linear-gradient(135deg, rgba(20, 20, 25, 0.9), rgba(10, 10, 15, 0.95));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    padding: 3rem;
+    max-width: 600px;
+    width: 90%;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    text-align: center;
+    position: relative;
+    transform: scale(0.95);
+    transition: transform 0.4s ease, top 0.4s ease, opacity 0.4s ease;
+}
+
+.ear-overlay:not(.hidden) .ear-box {
+    transform: scale(1);
+}
+
+/* Minimized State - Aggressive Override */
+.ear-box.minimized {
+    position: absolute !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    /* Remove centering transform */
+    width: 300px !important;
+    /* Much smaller width */
+    max-width: 90vw !important;
+    padding: 1.5rem !important;
+    opacity: 0.85 !important;
+    background: rgba(20, 20, 30, 0.9) !important;
+    backdrop-filter: blur(10px) !important;
+    margin: 0 !important;
+    border: 1px solid rgba(0, 255, 136, 0.3) !important;
+}
+
+.ear-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 1rem;
+}
+
+.ear-header h2 {
+    font-size: 2rem;
+    background: linear-gradient(to right, #ff9f43, #ffdd59);
+    /* Amber/Gold */
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 0;
+}
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 2rem;
+    cursor: pointer;
+    transition: color 0.2s, transform 0.2s;
+    line-height: 1;
+}
+
+.btn-icon:hover {
+    color: white;
+    transform: rotate(90deg);
+}
+
+/* Options Grid */
+.ear-options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.ear-options-grid button {
+    padding: 1.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.ear-options-grid button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* Level Menu */
+.level-grid {
+    display: grid;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.level-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 1.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+}
+
+.level-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--primary-color);
+}
+
+.level-card h3 {
+    margin-bottom: 0.5rem;
+    color: white;
+}
+
+.level-card p {
+    font-size: 0.9rem;
+    margin: 0;
+    color: #ccc;
+}
+
+.hidden {
+    display: none !important;
+    /* Force hide */
+}
+
+/* Override ear-overlay hidden mechanics */
+.ear-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+    /* display: flex is kept to allow transition, but pointer-events: none hides interaction */
+}
+
+/* Wait, we need display: none eventually to verify "hidden" class works with app logic? 
+   JS toggles .hidden class.
+   If I use opacity transition, I should also use visibility or display.
+   Let's just use display: none for simplicity if transitions are tricky.
+   Actually, the user wants it to look good.
+   I will use opacity.
+*/
+
 /* --- Lesson Overlay --- */
 .lesson-overlay {
     position: fixed;
@@ -374,8 +588,15 @@ small {
 
 .lesson-box h2 {
     color: var(--primary-color);
-    margin-bottom: 1rem;
-    font-size: 1.5rem;
+    margin-bottom: 2rem;
+    font-size: 1.1rem;
+}
+
+/* Global Utility Logic */
+.hidden {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 .lesson-box p {

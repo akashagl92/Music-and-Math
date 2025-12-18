@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Math & Music Visualizer</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=86">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
@@ -32,13 +32,16 @@
         </div>
 
         <div class="control-group">
-            <label for="viz-mode">Visualization</label>
+            <label>Mode</label>
             <select id="viz-mode">
-                <option value="oscilloscope">Oscilloscope (Time)</option>
-                <option value="spectrum">Spectrum (Frequency)</option>
-                <option value="lissajous">Lissajous (Phase)</option>
-                <option value="interference">Interference (Wave Sum)</option>
+                <option value="oscilloscope">Waveform</option>
+                <option value="spectrum">Spectrum</option>
+                <option value="lissajous">Lissajous</option>
+                <option value="interference">Interference Pattern</option>
             </select>
+            <button id="btn-ear-gym" class="btn-secondary" style="margin-top: 5px;">👂 Ear Gym</button>
+            <div id="midi-status" class="hidden" style="margin-top: 10px; font-size: 0.8rem; opacity: 0.8;">🎹 MIDI
+                Ready</div>
         </div>
 
         <div class="control-group">
@@ -81,6 +84,7 @@
                 <button id="btn-prev-fifth" class="btn-primary">← Prev</button>
                 <button id="btn-next-fifth" class="btn-primary">Next →</button>
             </div>
+            <div id="hover-info" class="hover-tooltip">Hover over controls...</div>
             <button id="btn-reset-circle" class="btn-secondary">Reset to C (Start)</button>
             <div class="stats">
                 <p>Steps: <span id="circle-steps">0</span></p>
@@ -105,10 +109,63 @@
     </div>
 
     <div id="keyboard-container" class="keyboard">
+        <!-- Harmony Analysis Badge -->
+        <div id="analysis-panel" class="analysis-badge" style="display: none;">
+            <h3 id="chord-name">C Major</h3>
+            <div class="analysis-details">
+                <span id="chord-ratios">1 : 1.25 : 1.5</span>
+                <span id="chord-stability" class="tag-consonant">Consonant</span>
+            </div>
+        </div>
+
         <!-- Keys injected by JS -->
     </div>
 
-    <script src="app.js?v=39"></script>
+    <!-- EAR TRAINING OVERLAY -->
+    <div id="ear-trainer" class="ear-overlay hidden">
+        <div class="ear-box">
+            <div class="ear-header">
+                <h2>👂 Ear Gym</h2>
+                <button id="close-ear" class="btn-icon">×</button>
+            </div>
+
+            <!-- Level Select -->
+            <div id="ear-levels" class="ear-levels">
+                <button class="btn-level" onclick="earTrainer.startLevel(1)">Level 1: Stability</button>
+                <button class="btn-level" onclick="earTrainer.startLevel(2)">Level 2: Ratios</button>
+                <button class="btn-level" onclick="earTrainer.startLevel(3)">Level 3: Perfect Pitch</button>
+            </div>
+
+            <!-- Game Mode -->
+            <div id="ear-game" class="hidden">
+                <div class="ear-status">
+                    <span id="level-title">Level 1</span>
+                    <span id="ear-score">Score: 0</span>
+                </div>
+
+                <div class="ear-visual-guard">
+                    <button id="btn-listen" class="btn-listen">🎧 Listen</button>
+                    <p class="hint">Visuals hidden until you guess!</p>
+                </div>
+
+                <div id="ear-options" class="ear-options-grid">
+                    <!-- Options injected by JS -->
+                </div>
+
+                <div id="ear-feedback" class="ear-feedback hidden">
+                    <h3>Correct!</h3>
+                    <p>That is a Perfect Fifth (3:2)</p>
+                    <p id="ear-notes" style="font-size: 1rem; font-weight: bold; margin-bottom: 5px; color: #fff;"></p>
+                    <p id="ear-explanation"
+                        style="font-size: 0.95rem; opacity: 0.9; margin-bottom: 15px; font-style: italic; color: #a1e6cb;">
+                    </p>
+                    <button id="btn-next-question" class="btn-primary">Next Question arrow_forward</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=90"></script>
 </body>
 
 </html>
