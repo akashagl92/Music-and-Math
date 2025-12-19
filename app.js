@@ -457,13 +457,13 @@ toggleTheory.addEventListener('change', (e) => {
 
 selectType.addEventListener('change', (e) => {
     oscType = e.target.value;
-    updateAudioState();
+    if (isAudioActive) updateAudioState();
 });
 
 rangeFreq.addEventListener('input', (e) => {
     frequency = parseInt(e.target.value);
     spanFreq.textContent = frequency;
-    updateAudioState();
+    if (isAudioActive) updateAudioState();
 });
 
 // Detune Listener
@@ -664,7 +664,14 @@ function initKeyboard() {
 
         // Individual Key Logic (Mouse/Touch)
         const startKey = () => {
-            // Resume Audio if suspended (redundant but safe)
+            // Auto-init audio on first key press
+            if (!isAudioActive) {
+                engine.init();
+                isAudioActive = true;
+                btnToggle.textContent = 'Stop Audio';
+                btnToggle.classList.add('active');
+            }
+            // Resume Audio if suspended
             if (engine.ctx && engine.ctx.state === 'suspended') engine.ctx.resume();
 
             if (theoryEnabled) {
@@ -697,17 +704,17 @@ function initKeyboard() {
 // BIND GLOBAL KEYS (Run Once)
 // We rely on 'keydown' / 'keyup' only being bound HERE to avoid duplicates if initKeyboard runs again.
 document.addEventListener('keydown', (e) => {
-    // console.log('[Keyboard] KeyDown:', e.key); // Debug log
     if (e.repeat) return;
-
-    // Prevent scrolling if playing piano keys
-    const preventKeys = ['a', 'w', 's', 'e', 'd', 'k', 'o', 'l', 'p', ';', '\''];
-    if (preventKeys.includes(e.key.toLowerCase())) {
-        // e.preventDefault(); // Optional: might block user typing in inputs if we add any
-    }
 
     const map = pianoKeys.find(k => k.key === e.key.toLowerCase());
     if (map) {
+        // Auto-init audio on first key press
+        if (!isAudioActive) {
+            engine.init();
+            isAudioActive = true;
+            btnToggle.textContent = 'Stop Audio';
+            btnToggle.classList.add('active');
+        }
         if (engine && engine.ctx && engine.ctx.state === 'suspended') engine.ctx.resume();
 
         if (theoryEnabled) {
@@ -863,7 +870,6 @@ function draw(timestamp) {
         lastAnalysisTime = timestamp;
 
         const activeNotes = engine.getActiveNotes();
-        const result = analyzer.identify(activeNotes);
 
         const panel = document.getElementById('analysis-panel');
         const nameEl = document.getElementById('chord-name');
@@ -871,16 +877,22 @@ function draw(timestamp) {
         const stabEl = document.getElementById('chord-stability');
 
         if (panel && nameEl && ratioEl && stabEl) {
-            if (result && activeNotes.length >= 2) {
-                panel.style.display = 'block';
-                nameEl.textContent = result.chordName;
-                const ratioStr = result.ratios.join(' : ');
-                ratioEl.textContent = ratioStr;
-                stabEl.textContent = result.stability;
-                stabEl.className = result.stability === 'Consonant' ? 'tag-consonant' : 'tag-dissonant';
+            if (activeNotes.length >= 2) {
+                const result = analyzer.identify(activeNotes);
+                console.log('[Chord] Detected:', result ? result.chordName : 'null', 'Notes:', activeNotes.length);
+                if (result) {
+                    panel.style.display = 'block';
+                    nameEl.textContent = result.chordName;
+                    const ratioStr = result.ratios.join(' : ');
+                    ratioEl.textContent = ratioStr;
+                    stabEl.textContent = result.stability;
+                    stabEl.className = result.stability === 'Consonant' ? 'tag-consonant' : 'tag-dissonant';
+                }
             } else {
                 panel.style.display = 'none';
             }
+        } else {
+            console.warn('[Chord] Panel elements not found:', !!panel, !!nameEl, !!ratioEl, !!stabEl);
         }
     }
 

@@ -108,16 +108,16 @@
         </div>
     </div>
 
-    <div id="keyboard-container" class="keyboard">
-        <!-- Harmony Analysis Badge -->
-        <div id="analysis-panel" class="analysis-badge" style="display: none;">
-            <h3 id="chord-name">C Major</h3>
-            <div class="analysis-details">
-                <span id="chord-ratios">1 : 1.25 : 1.5</span>
-                <span id="chord-stability" class="tag-consonant">Consonant</span>
-            </div>
+    <!-- Harmony Analysis Badge (Moved outside for CSS/JS stability) -->
+    <div id="analysis-panel" class="analysis-badge" style="display: none;">
+        <h3 id="chord-name">C Major</h3>
+        <div class="analysis-details">
+            <span id="chord-ratios">1 : 1.25 : 1.5</span>
+            <span id="chord-stability" class="tag-consonant">Consonant</span>
         </div>
+    </div>
 
+    <div id="keyboard-container" class="keyboard">
         <!-- Keys injected by JS -->
     </div>
 
@@ -165,7 +165,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=90"></script>
+    <script src="app.js?v=106"></script>
 </body>
 
 </html>
