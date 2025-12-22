@@ -395,6 +395,236 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// =============================================================================
+// SONIC GEOMETRY 2.0 - MODE SYSTEM & THEORY INTEGRATION
+// =============================================================================
+
+// --- MODE SYSTEM ---
+const MODES = {
+    THEORY: 'theory',
+    PRACTICE: 'practice',
+    PRODUCTION: 'production'
+};
+let currentAppMode = MODES.THEORY;
+
+// Theory Engine Instance
+const theoryEngine = new MusicTheoryEngine();
+
+// Current Key/Scale State
+let currentKeyRoot = 'A';
+let currentScaleType = 'naturalMinor';
+
+// --- UI ELEMENTS ---
+const modeButtons = document.querySelectorAll('.mode-btn');
+const keyRootSelect = document.getElementById('key-root');
+const scaleTypeSelect = document.getElementById('scale-type');
+const scaleNotesDisplay = document.getElementById('scale-notes');
+const diatonicChordsContainer = document.getElementById('diatonic-chords');
+const keyDetectionPanel = document.getElementById('key-detection-panel');
+const detectedKeyDisplay = document.getElementById('detected-key');
+const diatonicPanel = document.getElementById('diatonic-panel');
+
+// --- MODE SWITCHING ---
+function setMode(mode) {
+    currentAppMode = mode;
+
+    // Update button states
+    modeButtons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+
+    // Show/hide mode-specific panels
+    if (keyDetectionPanel) {
+        keyDetectionPanel.classList.toggle('hidden', mode !== MODES.PRODUCTION);
+    }
+
+    // Update UI based on mode
+    updateKeyDisplay();
+    updateDiatonicChords();
+    updateKeyboardOverlay();
+
+    console.log(`[Mode] Switched to ${mode}`);
+}
+
+// Mode button click handlers
+modeButtons.forEach(btn => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+
+// --- KEY/SCALE SELECTION ---
+function updateKeyDisplay() {
+    const scale = theoryEngine.getScaleNotes(currentKeyRoot, currentScaleType);
+    if (scale && scaleNotesDisplay) {
+        scaleNotesDisplay.textContent = scale.notes.join(' ');
+    }
+}
+
+function updateDiatonicChords() {
+    if (!diatonicChordsContainer) return;
+
+    const diatonic = theoryEngine.getDiatonicChords(currentKeyRoot, currentScaleType);
+    if (!diatonic) {
+        diatonicChordsContainer.innerHTML = '<small>Not available for this scale</small>';
+        return;
+    }
+
+    diatonicChordsContainer.innerHTML = '';
+    diatonic.forEach(item => {
+        const chip = document.createElement('div');
+        chip.className = 'chord-chip';
+        chip.innerHTML = `
+            <span class="numeral">${item.numeral}</span>
+            <span class="name">${item.chord.name}</span>
+        `;
+
+        // Detailed tooltip with chord info
+        const notes = item.chord.notes.join(' - ');
+        const formula = item.chord.formula || '';
+        chip.title = `${item.chord.fullName}\nNotes: ${notes}\nFormula: ${formula}\nClick to play`;
+
+        // Highlight keyboard keys on hover
+        chip.addEventListener('mouseenter', () => {
+            highlightChordKeys(item.chord.notes, true);
+            chip.classList.add('active');
+        });
+
+        chip.addEventListener('mouseleave', () => {
+            highlightChordKeys(item.chord.notes, false);
+            chip.classList.remove('active');
+        });
+
+        // Click to play chord AND keep keys highlighted briefly
+        chip.addEventListener('click', () => {
+            playDiatonicChord(item);
+            highlightChordKeys(item.chord.notes, true);
+            setTimeout(() => highlightChordKeys(item.chord.notes, false), 1000);
+        });
+
+        diatonicChordsContainer.appendChild(chip);
+    });
+}
+
+// Helper to highlight/unhighlight keyboard keys for a chord
+function highlightChordKeys(noteNames, highlight) {
+    const keys = document.querySelectorAll('.key');
+    keys.forEach(key => {
+        const keyNote = key.dataset.note;
+        if (!keyNote) return;
+
+        // Extract note name without octave (e.g., "C3" -> "C")
+        const noteOnly = keyNote.replace(/\d+/g, '');
+
+        if (noteNames.includes(noteOnly)) {
+            if (highlight) {
+                key.classList.add('chord-highlight');
+            } else {
+                key.classList.remove('chord-highlight');
+            }
+        }
+    });
+}
+
+function playDiatonicChord(item) {
+    if (!engine || !engine.ctx) {
+        engine.init();
+        isAudioActive = true;
+        btnToggle.textContent = 'Stop Audio';
+        btnToggle.classList.add('active');
+    }
+
+    // Play each note of the chord
+    item.chord.frequencies.forEach((f, i) => {
+        setTimeout(() => {
+            engine.playNote(f.frequency, oscType, 0, `chord_${item.root}_${i}`);
+        }, i * 50); // Slight arpeggio effect
+    });
+
+    // Stop after 1 second
+    setTimeout(() => {
+        item.chord.frequencies.forEach((f, i) => {
+            engine.stopNote(`chord_${item.root}_${i}`);
+        });
+    }, 1000);
+}
+
+function updateKeyboardOverlay() {
+    const scale = theoryEngine.getScaleNotes(currentKeyRoot, currentScaleType);
+    if (!scale) return;
+
+    const keys = document.querySelectorAll('.key');
+    keys.forEach(key => {
+        const noteName = key.dataset.note;
+        if (!noteName) return;
+
+        // Extract just the note without octave (e.g., "C3" -> "C")
+        const noteOnly = noteName.replace(/\d+/g, '');
+
+        // Check if note is in scale
+        const inScale = scale.notes.includes(noteOnly);
+        const isRoot = noteOnly === currentKeyRoot;
+
+        // Apply CSS classes
+        key.classList.toggle('in-scale', inScale);
+        key.classList.toggle('out-of-scale', !inScale);
+        key.classList.toggle('scale-root', isRoot);
+    });
+}
+
+// Key/Scale change handlers
+if (keyRootSelect) {
+    keyRootSelect.addEventListener('change', (e) => {
+        currentKeyRoot = e.target.value;
+        updateKeyDisplay();
+        updateDiatonicChords();
+        updateKeyboardOverlay();
+    });
+}
+
+if (scaleTypeSelect) {
+    scaleTypeSelect.addEventListener('change', (e) => {
+        currentScaleType = e.target.value;
+        updateKeyDisplay();
+        updateDiatonicChords();
+        updateKeyboardOverlay();
+    });
+}
+
+// --- KEY DETECTION (Production Mode) ---
+let recentlyPlayedNotes = [];
+const KEY_DETECTION_WINDOW = 5000; // 5 seconds
+
+function addNoteForKeyDetection(note) {
+    recentlyPlayedNotes.push({ note, time: Date.now() });
+
+    // Remove old notes
+    const cutoff = Date.now() - KEY_DETECTION_WINDOW;
+    recentlyPlayedNotes = recentlyPlayedNotes.filter(n => n.time > cutoff);
+
+    // Only run detection in production mode
+    if (currentAppMode === MODES.PRODUCTION && recentlyPlayedNotes.length >= 3) {
+        const notes = recentlyPlayedNotes.map(n => n.note);
+        const detected = theoryEngine.detectKey(notes);
+
+        if (detected.length > 0 && detectedKeyDisplay) {
+            detectedKeyDisplay.textContent = detected[0].key;
+            detectedKeyDisplay.title = `Confidence: ${Math.round(detected[0].score * 100)}%`;
+        }
+    }
+}
+
+// --- INITIALIZE ON LOAD ---
+function initTheoryUI() {
+    updateKeyDisplay();
+    updateDiatonicChords();
+
+    // Apply scale overlay after keyboard is rendered
+    setTimeout(updateKeyboardOverlay, 100);
+
+    console.log('[Theory] UI Initialized');
+}
+
+// Call after keyboard is ready (will be called from startApp)
+
 // --- EVENT LISTENERS ---
 const btnToggle = document.getElementById('toggle-audio');
 let isAudioActive = false;
@@ -441,19 +671,21 @@ selectMode.addEventListener('change', (e) => {
     if (detuneGroup) detuneGroup.style.display = (currentMode === 'lissajous') ? 'block' : 'none';
 });
 
-// Theory Toggle
-toggleTheory.addEventListener('change', (e) => {
-    theoryEnabled = e.target.checked;
-    if (harmonyGroup) harmonyGroup.style.display = theoryEnabled ? 'block' : 'none';
-    if (circleGroup) circleGroup.style.display = theoryEnabled ? 'block' : 'none';
+// Theory Toggle (Legacy - now handled by mode system)
+if (toggleTheory) {
+    toggleTheory.addEventListener('change', (e) => {
+        theoryEnabled = e.target.checked;
+        if (harmonyGroup) harmonyGroup.style.display = theoryEnabled ? 'block' : 'none';
+        if (circleGroup) circleGroup.style.display = theoryEnabled ? 'block' : 'none';
 
-    // Stop/Restart to switch modes cleanly
-    if (isAudioActive) {
-        engine.stopTone();
-        engine.stopTheoryTones();
-        updateAudioState();
-    }
-});
+        // Stop/Restart to switch modes cleanly
+        if (isAudioActive) {
+            engine.stopTone();
+            engine.stopTheoryTones();
+            updateAudioState();
+        }
+    });
+}
 
 selectType.addEventListener('change', (e) => {
     oscType = e.target.value;
@@ -1607,6 +1839,9 @@ function startApp() {
     if (lessonManager && !lessonManager.overlay) lessonManager.init();
     if (earTrainer) earTrainer.init();
     if (midiHandler) midiHandler.init();
+
+    // Initialize Theory UI (Sonic Geometry 2.0)
+    initTheoryUI();
 }
 
 // Fallback if already loaded

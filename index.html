@@ -24,15 +24,71 @@
             <button id="toggle-audio" class="btn-primary">Start Audio</button>
         </div>
 
-        <div class="control-group">
-            <label class="toggle-switch">
-                <input type="checkbox" id="toggle-theory">
-                <span class="label-text">Enable Theory Lab</span>
-            </label>
+        <!-- MODE SELECTOR -->
+        <div class="control-group mode-selector">
+            <label>Mode</label>
+            <div class="mode-buttons">
+                <button class="mode-btn active" data-mode="theory" title="Learn scales, chords, and theory">🎓
+                    Theory</button>
+                <button class="mode-btn" data-mode="practice" title="Interactive exercises and drills">🎯
+                    Practice</button>
+                <button class="mode-btn" data-mode="production" title="Create with intelligent suggestions">🎹
+                    Produce</button>
+            </div>
+        </div>
+
+        <!-- KEY/SCALE SELECTOR (visible in all modes) -->
+        <div class="control-group" id="key-controls">
+            <label>Key / Scale</label>
+            <div class="key-row">
+                <select id="key-root" title="Root note of the key">
+                    <option value="C">C</option>
+                    <option value="C#">C# / Db</option>
+                    <option value="D">D</option>
+                    <option value="D#">D# / Eb</option>
+                    <option value="E">E</option>
+                    <option value="F">F</option>
+                    <option value="F#">F# / Gb</option>
+                    <option value="G">G</option>
+                    <option value="G#">G# / Ab</option>
+                    <option value="A" selected>A</option>
+                    <option value="A#">A# / Bb</option>
+                    <option value="B">B</option>
+                </select>
+                <select id="scale-type" title="Scale type">
+                    <option value="naturalMinor" selected>Minor</option>
+                    <option value="major">Major</option>
+                    <option value="dorian">Dorian</option>
+                    <option value="phrygian">Phrygian</option>
+                    <option value="lydian">Lydian</option>
+                    <option value="mixolydian">Mixolydian</option>
+                    <option value="harmonicMinor">Harmonic Minor</option>
+                    <option value="melodicMinor">Melodic Minor</option>
+                    <option value="majorPentatonic">Major Pentatonic</option>
+                    <option value="minorPentatonic">Minor Pentatonic</option>
+                    <option value="blues">Blues</option>
+                </select>
+            </div>
+            <div id="scale-notes" class="scale-display">A B C D E F G</div>
+        </div>
+
+        <!-- DIATONIC CHORDS (Theory/Production modes) -->
+        <div class="control-group" id="diatonic-panel">
+            <label>Chords in Key <span class="info-icon"
+                    title="These chords naturally fit the selected scale">ⓘ</span></label>
+            <div id="diatonic-chords" class="chord-grid">
+                <!-- Filled by JS -->
+            </div>
+        </div>
+
+        <!-- KEY DETECTION (Production mode) -->
+        <div class="control-group hidden" id="key-detection-panel">
+            <label>Detected Key</label>
+            <div id="detected-key" class="detected-key-display">Play some notes...</div>
         </div>
 
         <div class="control-group">
-            <label>Mode</label>
+            <label>Visualization</label>
             <select id="viz-mode">
                 <option value="oscilloscope">Waveform</option>
                 <option value="spectrum">Spectrum</option>
@@ -117,6 +173,24 @@
         </div>
     </div>
 
+    <!-- Keyboard Legend -->
+    <div id="keyboard-legend" class="keyboard-legend">
+        <span class="legend-item">
+            <span class="legend-swatch root-swatch"></span>
+            Root Note
+        </span>
+        <span class="legend-item">
+            <span class="legend-swatch in-scale-swatch"></span>
+            In Scale
+        </span>
+        <span class="legend-item">
+            <span class="legend-swatch out-scale-swatch"></span>
+            Out of Scale
+        </span>
+        <span class="legend-info" title="Notes in scale will sound 'correct'. The root is your 'home' note.">💡 Play
+            only bright keys to stay in key!</span>
+    </div>
+
     <div id="keyboard-container" class="keyboard">
         <!-- Keys injected by JS -->
     </div>
@@ -165,7 +239,8 @@
         </div>
     </div>
 
-    <script src="app.js?v=106"></script>
+    <script src="theory-engine.js"></script>
+    <script src="app.js?v=110"></script>
 </body>
 
 </html>
