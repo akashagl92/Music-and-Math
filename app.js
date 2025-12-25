@@ -212,6 +212,8 @@ class AudioEngine {
 
         osc.type = type;
         osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        console.log(`[playNote] freq=${freq.toFixed(1)}, requested=${type}, actual=${osc.type}`);
+
 
         const now = this.ctx.currentTime;
         env.gain.setValueAtTime(0, now);
@@ -507,14 +509,18 @@ function updateDiatonicChords() {
 // Helper to highlight/unhighlight keyboard keys for a chord
 function highlightChordKeys(noteNames, highlight) {
     const keys = document.querySelectorAll('.key');
+    // Convert target note names to indices for robust comparison (enharmonics)
+    const targetIndices = noteNames.map(n => theoryEngine.noteToIndex(n));
+
     keys.forEach(key => {
         const keyNote = key.dataset.note;
         if (!keyNote) return;
 
-        // Extract note name without octave (e.g., "C3" -> "C")
+        // Extract note name without octave
         const noteOnly = keyNote.replace(/\d+/g, '');
+        const keyIndex = theoryEngine.noteToIndex(noteOnly);
 
-        if (noteNames.includes(noteOnly)) {
+        if (targetIndices.includes(keyIndex)) {
             if (highlight) {
                 key.classList.add('chord-highlight');
             } else {
@@ -551,17 +557,22 @@ function updateKeyboardOverlay() {
     const scale = theoryEngine.getScaleNotes(currentKeyRoot, currentScaleType);
     if (!scale) return;
 
+    // Scale indices for enharmonic matching
+    const scaleIndices = scale.notes.map(n => theoryEngine.noteToIndex(n));
+    const rootIndex = theoryEngine.noteToIndex(currentKeyRoot);
+
     const keys = document.querySelectorAll('.key');
     keys.forEach(key => {
         const noteName = key.dataset.note;
         if (!noteName) return;
 
-        // Extract just the note without octave (e.g., "C3" -> "C")
+        // Extract just the note without octave
         const noteOnly = noteName.replace(/\d+/g, '');
+        const keyIndex = theoryEngine.noteToIndex(noteOnly);
 
         // Check if note is in scale
-        const inScale = scale.notes.includes(noteOnly);
-        const isRoot = noteOnly === currentKeyRoot;
+        const inScale = scaleIndices.includes(keyIndex);
+        const isRoot = keyIndex === rootIndex;
 
         // Apply CSS classes
         key.classList.toggle('in-scale', inScale);
@@ -577,6 +588,7 @@ if (keyRootSelect) {
         updateKeyDisplay();
         updateDiatonicChords();
         updateKeyboardOverlay();
+        updateCircleHighlights();
     });
 }
 
@@ -586,6 +598,7 @@ if (scaleTypeSelect) {
         updateKeyDisplay();
         updateDiatonicChords();
         updateKeyboardOverlay();
+        updateCircleHighlights();
     });
 }
 
@@ -612,10 +625,224 @@ function addNoteForKeyDetection(note) {
     }
 }
 
+// --- CIRCLE OF FIFTHS ---
+const CIRCLE_OF_FIFTHS = [
+    { major: 'C', minor: 'Am' },
+    { major: 'G', minor: 'Em' },
+    { major: 'D', minor: 'Bm' },
+    { major: 'A', minor: 'F#m' },
+    { major: 'E', minor: 'C#m' },
+    { major: 'B', minor: 'G#m' },
+    { major: 'F#', minor: 'D#m' },
+    { major: 'Db', minor: 'Bbm' },
+    { major: 'Ab', minor: 'Fm' },
+    { major: 'Eb', minor: 'Cm' },
+    { major: 'Bb', minor: 'Gm' },
+    { major: 'F', minor: 'Dm' }
+];
+
+function initCircleOfFifthsMini() {
+    const container = document.getElementById('circle-of-fifths-mini');
+    if (!container) return;
+
+    const size = 180;
+    const cx = size / 2;
+    const cy = size / 2;
+    const outerR = size / 2 - 5;
+    const innerR = outerR * 0.55;
+
+    let svg = `<svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">`;
+
+    CIRCLE_OF_FIFTHS.forEach((key, i) => {
+        const startAngle = (i * 30 - 90) * Math.PI / 180;
+        const endAngle = ((i + 1) * 30 - 90) * Math.PI / 180;
+        const midAngle = (startAngle + endAngle) / 2;
+
+        // Outer arc (Major keys)
+        const x1o = cx + outerR * Math.cos(startAngle);
+        const y1o = cy + outerR * Math.sin(startAngle);
+        const x2o = cx + outerR * Math.cos(endAngle);
+        const y2o = cy + outerR * Math.sin(endAngle);
+        const x1i = cx + innerR * Math.cos(startAngle);
+        const y1i = cy + innerR * Math.sin(startAngle);
+        const x2i = cx + innerR * Math.cos(endAngle);
+        const y2i = cy + innerR * Math.sin(endAngle);
+
+        const pathOuter = `M ${x1i} ${y1i} L ${x1o} ${y1o} A ${outerR} ${outerR} 0 0 1 ${x2o} ${y2o} L ${x2i} ${y2i} A ${innerR} ${innerR} 0 0 0 ${x1i} ${y1i}`;
+
+        svg += `<path class="cof-segment" data-key="${key.major}" data-type="major" d="${pathOuter}"/>`;
+
+        // Label for major
+        const labelR = (outerR + innerR) / 2;
+        const lx = cx + labelR * Math.cos(midAngle);
+        const ly = cy + labelR * Math.sin(midAngle);
+        svg += `<text class="cof-label" x="${lx}" y="${ly}">${key.major}</text>`;
+
+        // Inner segment (Minor keys)
+        const minorR = innerR - 5;
+        const innerR2 = 15;
+        const x1m = cx + minorR * Math.cos(startAngle);
+        const y1m = cy + minorR * Math.sin(startAngle);
+        const x2m = cx + minorR * Math.cos(endAngle);
+        const y2m = cy + minorR * Math.sin(endAngle);
+        const x1c = cx + innerR2 * Math.cos(startAngle);
+        const y1c = cy + innerR2 * Math.sin(startAngle);
+        const x2c = cx + innerR2 * Math.cos(endAngle);
+        const y2c = cy + innerR2 * Math.sin(endAngle);
+
+        const pathMinor = `M ${x1c} ${y1c} L ${x1m} ${y1m} A ${minorR} ${minorR} 0 0 1 ${x2m} ${y2m} L ${x2c} ${y2c} A ${innerR2} ${innerR2} 0 0 0 ${x1c} ${y1c}`;
+        svg += `<path class="cof-segment" data-key="${key.minor.replace('m', '')}" data-type="minor" d="${pathMinor}"/>`;
+
+        // Label for minor
+        const minorLabelR = (minorR + innerR2) / 2;
+        const mlx = cx + minorLabelR * Math.cos(midAngle);
+        const mly = cy + minorLabelR * Math.sin(midAngle);
+        svg += `<text class="cof-label cof-label-minor" x="${mlx}" y="${mly}">${key.minor}</text>`;
+    });
+
+    svg += '</svg>';
+    container.innerHTML = svg;
+
+    // Add click handlers
+    container.querySelectorAll('.cof-segment').forEach(seg => {
+        seg.addEventListener('click', () => {
+            const key = seg.dataset.key;
+            const type = seg.dataset.type;
+
+            // Update dropdowns
+            const keySelect = document.getElementById('key-root');
+            const scaleSelect = document.getElementById('scale-type');
+
+            if (keySelect) keySelect.value = key;
+            if (scaleSelect) scaleSelect.value = type === 'minor' ? 'minor' : 'major';
+
+            // Trigger updates
+            currentKeyRoot = key;
+            currentScaleType = type === 'minor' ? 'minor' : 'major';
+            updateKeyDisplay();
+            updateDiatonicChords();
+            updateKeyboardOverlay();
+            updateCircleHighlights();
+        });
+    });
+
+    updateCircleHighlights();
+}
+
+function updateCircleHighlights() {
+    const container = document.getElementById('circle-of-fifths-mini');
+    if (!container) return;
+
+    const segments = container.querySelectorAll('.cof-segment');
+    segments.forEach(seg => {
+        seg.classList.remove('active', 'adjacent', 'relative');
+
+        const segKey = seg.dataset.key;
+        const segType = seg.dataset.type;
+
+        // Find current key position
+        const currentIndex = CIRCLE_OF_FIFTHS.findIndex(k =>
+            (segType === 'major' && k.major === currentKeyRoot) ||
+            (segType === 'minor' && k.minor.replace('m', '') === currentKeyRoot)
+        );
+
+        // Highlight active key
+        if (segKey === currentKeyRoot) {
+            const isMinorScale = currentScaleType === 'minor' || currentScaleType === 'natural_minor';
+            if ((segType === 'minor' && isMinorScale) || (segType === 'major' && !isMinorScale)) {
+                seg.classList.add('active');
+            }
+        }
+
+        // Highlight adjacent keys (modulation candidates)
+        if (currentIndex !== -1) {
+            const prevIdx = (currentIndex - 1 + 12) % 12;
+            const nextIdx = (currentIndex + 1) % 12;
+            if (segType === 'major') {
+                if (CIRCLE_OF_FIFTHS[prevIdx].major === segKey || CIRCLE_OF_FIFTHS[nextIdx].major === segKey) {
+                    seg.classList.add('adjacent');
+                }
+            }
+        }
+    });
+}
+
+// --- CIRCLE OF FIFTHS FULL VISUALIZATION ---
+function drawCircleOfFifths() {
+    ctx.fillStyle = '#0a0a0f';
+    ctx.fillRect(0, 0, width, height);
+
+    const cx = width / 2;
+    const cy = height / 2;
+    const maxR = Math.min(width, height) / 2 - 50;
+    const outerR = maxR;
+    const innerR = maxR * 0.6;
+    const minorR = innerR - 10;
+    const centerR = maxR * 0.25;
+
+    CIRCLE_OF_FIFTHS.forEach((key, i) => {
+        const startAngle = (i * 30 - 90) * Math.PI / 180;
+        const endAngle = ((i + 1) * 30 - 90) * Math.PI / 180;
+        const midAngle = (startAngle + endAngle) / 2;
+
+        // Determine if this is the active key
+        const isMinorScale = currentScaleType === 'minor' || currentScaleType === 'natural_minor';
+        const isMajorActive = !isMinorScale && key.major === currentKeyRoot;
+        const isMinorActive = isMinorScale && key.minor.replace('m', '') === currentKeyRoot;
+
+        // Draw major segment
+        ctx.beginPath();
+        ctx.arc(cx, cy, outerR, startAngle, endAngle);
+        ctx.arc(cx, cy, innerR, endAngle, startAngle, true);
+        ctx.closePath();
+        ctx.fillStyle = isMajorActive ? 'rgba(0, 204, 255, 0.4)' : 'rgba(255, 255, 255, 0.08)';
+        ctx.fill();
+        ctx.strokeStyle = isMajorActive ? '#00ccff' : 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = isMajorActive ? 3 : 1;
+        ctx.stroke();
+
+        // Major label
+        const labelR = (outerR + innerR) / 2;
+        const lx = cx + labelR * Math.cos(midAngle);
+        const ly = cy + labelR * Math.sin(midAngle);
+        ctx.fillStyle = isMajorActive ? '#00ccff' : '#fff';
+        ctx.font = isMajorActive ? 'bold 20px Outfit' : '18px Outfit';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(key.major, lx, ly);
+
+        // Draw minor segment
+        ctx.beginPath();
+        ctx.arc(cx, cy, minorR, startAngle, endAngle);
+        ctx.arc(cx, cy, centerR, endAngle, startAngle, true);
+        ctx.closePath();
+        ctx.fillStyle = isMinorActive ? 'rgba(255, 136, 0, 0.4)' : 'rgba(255, 255, 255, 0.04)';
+        ctx.fill();
+        ctx.strokeStyle = isMinorActive ? '#ff8800' : 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = isMinorActive ? 2 : 1;
+        ctx.stroke();
+
+        // Minor label
+        const minorLabelR = (minorR + centerR) / 2;
+        const mlx = cx + minorLabelR * Math.cos(midAngle);
+        const mly = cy + minorLabelR * Math.sin(midAngle);
+        ctx.fillStyle = isMinorActive ? '#ff8800' : 'rgba(255, 255, 255, 0.6)';
+        ctx.font = isMinorActive ? 'bold 14px Outfit' : '12px Outfit';
+        ctx.fillText(key.minor, mlx, mly);
+    });
+
+    // Center label
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px Outfit';
+    ctx.fillText('Circle of', cx, cy - 10);
+    ctx.fillText('Fifths', cx, cy + 10);
+}
+
 // --- INITIALIZE ON LOAD ---
 function initTheoryUI() {
     updateKeyDisplay();
     updateDiatonicChords();
+    initCircleOfFifthsMini();
 
     // Apply scale overlay after keyboard is rendered
     setTimeout(updateKeyboardOverlay, 100);
@@ -689,7 +916,8 @@ if (toggleTheory) {
 
 selectType.addEventListener('change', (e) => {
     oscType = e.target.value;
-    if (isAudioActive) updateAudioState();
+    console.log(`[Waveform] Changed to: ${oscType}`);
+    // Note: waveform change only affects NEW notes, not currently playing ones
 });
 
 rangeFreq.addEventListener('input', (e) => {
@@ -908,12 +1136,18 @@ function initKeyboard() {
 
             if (theoryEnabled) {
                 const detuneMultiplier = Math.pow(2, detuneCents / 1200);
+                console.log(`[Keyboard] Playing ${k.note} with oscType=${oscType}`);
                 engine.playNote(k.freq, oscType, -0.5, `${k.note}_base`);
                 engine.playNote(k.freq * harmonyRatio * detuneMultiplier, oscType, 0.5, `${k.note}_harm`);
             } else {
+                console.log(`[Keyboard] Playing ${k.note} with oscType=${oscType}`);
                 engine.playNote(k.freq, oscType, 0, `${k.note}_base`);
             }
             keyEl.classList.add('active');
+
+            // Feed note to key detection for Production mode
+            const noteOnly = k.note.replace(/\d+/g, '');
+            addNoteForKeyDetection(noteOnly);
         };
         const stopKey = () => {
             engine.stopNote(`${k.note}_base`);
@@ -951,13 +1185,19 @@ document.addEventListener('keydown', (e) => {
 
         if (theoryEnabled) {
             const detuneMultiplier = Math.pow(2, detuneCents / 1200);
+            console.log(`[PhysicalKey] ${map.note} with oscType=${oscType}`);
             engine.playNote(map.freq, oscType, -0.5, `${map.note}_base`);
             engine.playNote(map.freq * harmonyRatio * detuneMultiplier, oscType, 0.5, `${map.note}_harm`);
         } else {
+            console.log(`[PhysicalKey] ${map.note} with oscType=${oscType}`);
             engine.playNote(map.freq, oscType, 0, `${map.note}_base`);
         }
         const el = document.querySelector(`.key[data-note="${map.note}"]`);
         if (el) el.classList.add('active');
+
+        // Feed note to key detection for Production mode
+        const noteOnly = map.note.replace(/\d+/g, '');
+        addNoteForKeyDetection(noteOnly);
     }
 });
 
@@ -1147,11 +1387,7 @@ function draw(timestamp) {
     if (currentMode === 'spectrum') drawSpectrum();
     if (currentMode === 'lissajous') drawLissajous();
     if (currentMode === 'interference') drawTheory();
-
-    // Overlay Circle if Theory enabled (on ANY visualization)
-    if (theoryEnabled) {
-        drawCircleOfFifths();
-    }
+    if (currentMode === 'circleOfFifths') drawCircleOfFifths();
 }
 
 function drawOscilloscope() {
@@ -1799,7 +2035,10 @@ class MIDIHandler {
             engine.ctx.resume();
         }
 
-        if (engine) engine.playNote(freq, oscType, (volume - 0.5) * 0.4, `${noteName}_midi`);
+        if (engine) {
+            console.log(`[MIDI] Playing ${noteName} freq=${freq.toFixed(1)} with oscType=${oscType}`);
+            engine.playNote(freq, oscType, (volume - 0.5) * 0.4, `${noteName}_midi`);
+        }
         this.highlightKey(noteName, true);
     }
 

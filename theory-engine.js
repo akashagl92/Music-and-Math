@@ -502,7 +502,7 @@ class MusicTheoryEngine {
             frequencies: notes.map((n, i) => ({
                 note: n,
                 octave: 4 + Math.floor((rootIndex + chord.intervals[i]) / 12),
-                frequency: this.noteToFrequency(n, 4)
+                frequency: this.noteToFrequency(n, 4 + Math.floor((rootIndex + chord.intervals[i]) / 12))
             }))
         };
     }

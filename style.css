@@ -930,3 +930,60 @@ small {
     color: var(--primary-color);
     cursor: help;
 }
+
+/* --- CIRCLE OF FIFTHS MINI PANEL --- */
+.circle-mini-container {
+    width: 100%;
+    max-width: 180px;
+    margin: 0 auto;
+    aspect-ratio: 1;
+}
+
+.circle-mini-container svg {
+    width: 100%;
+    height: 100%;
+}
+
+.cof-segment {
+    fill: rgba(255, 255, 255, 0.05);
+    stroke: rgba(255, 255, 255, 0.3);
+    stroke-width: 1;
+    cursor: pointer;
+    transition: fill 0.2s, stroke 0.2s;
+}
+
+.cof-segment:hover {
+    fill: rgba(0, 204, 255, 0.2);
+    stroke: var(--primary-color);
+}
+
+.cof-segment.active {
+    fill: rgba(0, 204, 255, 0.4);
+    stroke: var(--primary-color);
+    stroke-width: 2;
+}
+
+.cof-segment.adjacent {
+    fill: rgba(0, 204, 255, 0.15);
+}
+
+.cof-segment.relative {
+    fill: rgba(255, 136, 0, 0.25);
+    stroke: #ff8800;
+}
+
+.cof-label {
+    font-size: 11px;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    fill: #fff;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+}
+
+.cof-label-minor {
+    font-size: 8px;
+    font-weight: 500;
+    fill: rgba(255, 255, 255, 0.8);
+}
